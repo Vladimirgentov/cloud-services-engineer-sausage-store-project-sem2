@@ -1,25 +1,31 @@
 # Sausage Store project
 
-Финальный проект второго семестра
+Проектная работа по дисциплине **Cloud Services Engineer**.
 
 В проекте выполнены:
 
-* контейнеризация сервисов приложения «Сосисочная»;
-* создание Dockerfile для `backend`, `backend-report` и `frontend`;
-* сборка и публикация Docker-образов в Docker Hub;
-* создание `docker-compose.yml` для локального запуска приложения;
-* добавление Flyway-миграций для PostgreSQL;
-* создание Helm chart для деплоя приложения в Kubernetes;
-* настройка PostgreSQL и MongoDB в Kubernetes;
-* настройка PersistentVolumeClaim для PostgreSQL и MongoDB;
-* настройка Service и Ingress для frontend;
-* настройка Service для backend и backend-report;
-* настройка стратегии деплоя backend через `RollingUpdate`;
-* настройка стратегии деплоя backend-report через `Recreate`;
-* настройка HPA для backend-report;
-* настройка VPA для backend в режиме рекомендаций;
-* настройка livenessProbe для backend;
-* проверка деплоя в Kubernetes.
+- контейнеризация сервисов приложения «Сосисочная»;
+- создание Dockerfile для `backend`, `backend-report` и `frontend`;
+- сборка и публикация Docker-образов в Docker Hub;
+- создание `docker-compose.yml` для локального запуска приложения;
+- добавление Flyway-миграций для PostgreSQL;
+- создание Helm chart для деплоя приложения в Kubernetes;
+- настройка PostgreSQL и MongoDB в Kubernetes;
+- настройка PersistentVolumeClaim для PostgreSQL и MongoDB;
+- настройка Service и Ingress для frontend;
+- настройка Service для backend и backend-report;
+- настройка стратегии деплоя backend через `RollingUpdate`;
+- настройка стратегии деплоя backend-report через `Recreate`;
+- настройка HPA для backend-report;
+- настройка VPA для backend в режиме рекомендаций;
+- настройка livenessProbe для backend;
+- проверка деплоя в Kubernetes.
+
+## Репозиторий
+
+```text
+https://github.com/Vladimirgentov/cloud-services-engineer-sausage-store-project-sem2
+```
 
 ## Состав проекта
 
@@ -112,6 +118,18 @@ sausage-frontend
 
 PostgreSQL и MongoDB используются как внутренние сервисы compose-сети.
 
+Запуск:
+
+```powershell
+docker compose up -d
+```
+
+Проверка статуса контейнеров:
+
+```powershell
+docker compose ps
+```
+
 Проверка локального backend healthcheck:
 
 ```powershell
@@ -180,15 +198,15 @@ infra
 
 В `values.yaml` вынесены основные параметры:
 
-* Docker images;
-* ports;
-* database connection settings;
-* MongoDB connection settings;
-* resources requests и limits;
-* ingress host;
-* параметры HPA;
-* параметры VPA;
-* параметры PVC.
+- Docker images;
+- ports;
+- database connection settings;
+- MongoDB connection settings;
+- resources requests и limits;
+- ingress host;
+- параметры HPA;
+- параметры VPA;
+- параметры PVC.
 
 Проверка chart:
 
@@ -307,12 +325,12 @@ sausage-backend
 
 Для backend настроены:
 
-* Service `sausage-backend`;
-* Secret с подключением к PostgreSQL и MongoDB;
-* livenessProbe `/actuator/health`;
-* стратегия обновления `RollingUpdate`;
-* resources requests и limits;
-* VPA в режиме `Off`.
+- Service `sausage-backend`;
+- Secret с подключением к PostgreSQL и MongoDB;
+- livenessProbe `/actuator/health`;
+- стратегия обновления `RollingUpdate`;
+- resources requests и limits;
+- VPA в режиме `Off`.
 
 Backend Service:
 
@@ -342,11 +360,11 @@ sausage-store-backend-report
 
 Для backend-report настроены:
 
-* Service `sausage-backend-report`;
-* подключение к MongoDB;
-* стратегия обновления `Recreate`;
-* resources requests и limits;
-* HPA по CPU.
+- Service `sausage-backend-report`;
+- подключение к MongoDB;
+- стратегия обновления `Recreate`;
+- resources requests и limits;
+- HPA по CPU.
 
 Backend-report Service:
 
@@ -378,10 +396,10 @@ sausage-store-frontend
 
 Для frontend настроены:
 
-* Service `sausage-store-frontend`;
-* Ingress;
-* HTTPS через wildcard TLS secret;
-* resources requests и limits.
+- Service `sausage-store-frontend`;
+- Ingress;
+- HTTPS через wildcard TLS secret;
+- resources requests и limits.
 
 Frontend Service:
 
@@ -597,13 +615,49 @@ updateMode: "Off"
 
 Для всех основных компонентов заданы requests и limits:
 
-* backend;
-* backend-report;
-* frontend;
-* PostgreSQL;
-* MongoDB.
+- backend;
+- backend-report;
+- frontend;
+- PostgreSQL;
+- MongoDB.
 
 Это позволяет Kubernetes учитывать потребление CPU и памяти при планировании pod'ов, а также использовать HPA/VPA.
+
+## GitHub Actions
+
+В репозитории используется workflow:
+
+```text
+.github/workflows/deploy.yaml
+```
+
+Для работы workflow нужны GitHub Actions secrets:
+
+```text
+DOCKER_USER
+DOCKER_PASSWORD
+KUBE_CONFIG
+```
+
+Назначение секретов:
+
+```text
+DOCKER_USER      — имя пользователя Docker Hub.
+DOCKER_PASSWORD  — Docker Hub access token с правами Read & Write.
+KUBE_CONFIG      — полный kubeconfig для доступа к Kubernetes namespace.
+```
+
+Workflow выполняет:
+
+- checkout repository;
+- сборку Docker images;
+- push images в Docker Hub;
+- `helm dependency update`;
+- `helm lint`;
+- `helm template`;
+- `helm upgrade --install`;
+- проверку rollout;
+- вывод Kubernetes-ресурсов.
 
 ## Итог
 
