@@ -4,79 +4,129 @@ on:
   push:
     branches:
       - main
+  workflow_dispatch:
 
 env:
-  NEXUS_HELM_REPO: ${{ secrets.NEXUS_HELM_REPO }}
-  NEXUS_HELM_REPO_USER: ${{ secrets.NEXUS_HELM_REPO_USER }}
-  NEXUS_HELM_REPO_PASSWORD: ${{ secrets.NEXUS_HELM_REPO_PASSWORD }}
-  SAUSAGE_STORE_NAMESPACE: YOUR_NAMESPACE
-  KUBE_CONFIG: ${{ secrets.KUBE_CONFIG }}
-  VAULT_TOKEN: ${{ secrets.VAULT_TOKEN }}
+  DOCKERHUB_USER: vladimirgentov
+  BACKEND_IMAGE: vladimirgentov/sausage-backend
+  FRONTEND_IMAGE: vladimirgentov/sausage-frontend
+  BACKEND_REPORT_IMAGE: vladimirgentov/sausage-backend-report
+  SAUSAGE_STORE_NAMESPACE: r-devops-magistracy-project-2sem-1130000025920242
+  HELM_CHART_DIR: sausage-store-chart
+  RELEASE_NAME: sausage-store
 
 jobs:
-  # Сборка и пуш образов в докерхаб:
   build_and_push_to_docker_hub:
-      name: Push Docker image to DockerHub
-      runs-on: ubuntu-latest
-      steps:
-        - name: Check out the repo
-          # Получение исходного кода из репозитория:
-          uses: actions/checkout@v3
-        - name: Set up Docker Buildx
-          # Установка сборщика контейнеров Docker:
-          uses: docker/setup-buildx-action@v2
-        - name: Login to Docker 
-          # Авторизация на Docker Hub:
-          uses: docker/login-action@v2
-          # При помощи with передаём в action параметры username и password:
-          with:
-            username: ${{ secrets.DOCKER_USER }}
-            password: ${{ secrets.DOCKER_PASSWORD }}
-            # Хорошо ли держать логин и пароль прямо в коде workflow?
-            # Нет, это нехорошо. Хранить пароль надо в Secrets.
-        - name: Push Backend to DockerHub
-          # Одновременный билд и пуш образа в Docker Hub:
-          uses: docker/build-push-action@v4
-          with:
-            # Параметр context: ./backend/ указывает, что нужный Dockerfile 
-            # находится в ./backend/
-            context: ./backend/
-            # Параметр push: true указывает, что образ нужно не только собрать,
-            # но и отправить на Docker Hub:
-            push: true
-            # В параметре tags задаётся название и тег для образа.
-            # Для каждого пересобранного образа 
-            # устанавливаем тег latest, чтобы потом
-            # на сервере и в docker-compose.yml не указывать версию образа:
-            tags: YOUR_DOCKERHUB/sausage-backend:latest
-            build-args: |
-              VERSION=${{ github.sha }}
-        - name: Push Frontend to DockerHub
-          uses: docker/build-push-action@v4
-          with:
-            context: ./frontend/
-            push: true
-            tags: YOUR_DOCKERHUB/sausage-frontend:latest
-        - name: Push Backend-report to DockerHub
-          uses: docker/build-push-action@v4
-          with:
-            context: ./backend-report/
-            push: true
-            tags: YOUR_DOCKERHUB/sausage-backend-report:latest
-  # Упаковываем helm-чарт и пушим его в Nexus
-  add_helm_chart_to_nexus:
-      name: Add Helm Chart To Nexus
-      runs-on: ubuntu-latest
-      needs: build_and_push_to_docker_hub
+    name: Build and push Docker images
+    runs-on: ubuntu-latest
 
-      steps:
-      #### Опишите необходимые шаги
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
 
-  # Деплоим приложения в кластер Kubernetes с помощью helm-чарт
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USER }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Build and push backend image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          push: true
+          tags: |
+            ${{ env.BACKEND_IMAGE }}:latest
+            ${{ env.BACKEND_IMAGE }}:${{ github.sha }}
+          build-args: |
+            VERSION=1.0.0
+
+      - name: Build and push frontend image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./frontend
+          push: true
+          tags: |
+            ${{ env.FRONTEND_IMAGE }}:latest
+            ${{ env.FRONTEND_IMAGE }}:${{ github.sha }}
+
+      - name: Build and push backend-report image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend-report
+          push: true
+          tags: |
+            ${{ env.BACKEND_REPORT_IMAGE }}:latest
+            ${{ env.BACKEND_REPORT_IMAGE }}:${{ github.sha }}
+
+  lint_helm_chart:
+    name: Lint Helm chart
+    runs-on: ubuntu-latest
+    needs: build_and_push_to_docker_hub
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+
+      - name: Update Helm dependencies
+        run: helm dependency update ${{ env.HELM_CHART_DIR }}
+
+      - name: Lint Helm chart
+        run: helm lint ${{ env.HELM_CHART_DIR }}
+
+      - name: Render Helm chart
+        run: |
+          helm template ${{ env.RELEASE_NAME }} ${{ env.HELM_CHART_DIR }} \
+            -n ${{ env.SAUSAGE_STORE_NAMESPACE }}
+
   deploy_helm_chart_to_kubernetes:
-      name: Deploy Helm Chart To Kubernetes
-      runs-on: ubuntu-latest
-      needs: add_helm_chart_to_nexus
+    name: Deploy Helm chart to Kubernetes
+    runs-on: ubuntu-latest
+    needs: lint_helm_chart
 
-      steps:
-      #### Опишите необходимые шаги
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+
+      - name: Set up kubeconfig
+        run: |
+          mkdir -p ~/.kube
+          cat > ~/.kube/config <<'EOF'
+          ${{ secrets.KUBE_CONFIG }}
+          EOF
+          chmod 600 ~/.kube/config
+
+      - name: Update Helm dependencies
+        run: helm dependency update ${{ env.HELM_CHART_DIR }}
+
+      - name: Deploy application
+        run: |
+          helm upgrade --install ${{ env.RELEASE_NAME }} ${{ env.HELM_CHART_DIR }} \
+            -n ${{ env.SAUSAGE_STORE_NAMESPACE }} \
+            --set backend.image.tag=${{ github.sha }} \
+            --set frontend.image.tag=${{ github.sha }} \
+            --set backend-report.image.tag=${{ github.sha }}
+
+      - name: Check rollout
+        run: |
+          kubectl rollout status deployment/sausage-backend -n ${{ env.SAUSAGE_STORE_NAMESPACE }} --timeout=180s
+          kubectl rollout status deployment/sausage-store-frontend -n ${{ env.SAUSAGE_STORE_NAMESPACE }} --timeout=180s
+          kubectl rollout status deployment/sausage-store-backend-report -n ${{ env.SAUSAGE_STORE_NAMESPACE }} --timeout=180s
+
+      - name: Show Kubernetes resources
+        run: |
+          kubectl get pods -n ${{ env.SAUSAGE_STORE_NAMESPACE }}
+          kubectl get pvc -n ${{ env.SAUSAGE_STORE_NAMESPACE }}
+          kubectl get svc -n ${{ env.SAUSAGE_STORE_NAMESPACE }}
+          kubectl get ingress -n ${{ env.SAUSAGE_STORE_NAMESPACE }}
+          kubectl get hpa -n ${{ env.SAUSAGE_STORE_NAMESPACE }}
+          kubectl get vpa -n ${{ env.SAUSAGE_STORE_NAMESPACE }}
