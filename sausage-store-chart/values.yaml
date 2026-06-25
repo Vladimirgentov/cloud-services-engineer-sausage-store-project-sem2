@@ -1,78 +1,107 @@
 global:
-  imagePullPolicy: Always
-  ###vault:
-  ###  host: ip
-  ###  name: vault
-  ###  vaultToken: someToken
+  environment: production
 
+backend:
+  replicas: 1
+  image:
+    repository: vladimirgentov/sausage-backend
+    tag: latest
+    pullPolicy: Always
+  service:
+    port: 8080
+  database:
+    url: jdbc:postgresql://postgresql:5432/sausage-store
+    username: store
+    password: storepassword
+  mongodb:
+    uri: mongodb://root:rootpassword@mongodb:27017/sausage-store?authSource=admin
+  vault:
+    enabled: "false"
+  resources:
+    requests:
+      cpu: 250m
+      memory: 300Mi
+    limits:
+      cpu: 700m
+      memory: 600Mi
+  livenessProbe:
+    path: /actuator/health
+    initialDelaySeconds: 60
+    periodSeconds: 15
+  vpa:
+    enabled: true
+    updateMode: "Off"
+
+backend-report:
+  replicas: 1
+  image:
+    repository: vladimirgentov/sausage-backend-report
+    tag: latest
+    pullPolicy: Always
+  service:
+    port: 8080
+  env:
+    port: "8080"
+    db: mongodb://root:rootpassword@mongodb:27017/sausage-store?authSource=admin
+  resources:
+    requests:
+      cpu: 100m
+      memory: 100Mi
+    limits:
+      cpu: 300m
+      memory: 256Mi
+  hpa:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 2
+    targetCPUUtilizationPercentage: 75
 
 frontend:
-### В чарте frontend отсутствуют некоторые важные файлы. Поймите какие и опишите их.
   replicas: 1
-  revisionHistoryLimit: 15
-  strategy:
-    type: Recreate
+  image:
+    repository: vladimirgentov/sausage-frontend
+    tag: latest
+    pullPolicy: Always
   service:
     port: 80
   ingress:
-    host: YOUR_STUDENT_HOSTNAME.students-projects.ru # Корректный домен будет указан в задании
-    path: /
-    pathType: Prefix
-  containerPort: 80
-  image: YOUR_DOCKERHUB/sausage-frontend:latest
+    enabled: true
+    className: nginx
+    host: front-vladimirgentov.2sem.students-projects.ru
+    tlsSecret: 2sem-students-projects-wildcard-secret
   resources:
     requests:
-      memory: "128Mi"
-      cpu: "100m"
+      cpu: 50m
+      memory: 64Mi
     limits:
-      memory: "128Mi"
-      cpu: "1"
-  nginxConf: nginx.conf
-
-backend:
-  annotations:
-    path: /actuator/prometheus
-    port: "8080"
-    scrape: "true"
-  env:
-    postgresUri: jdbc:postgresql://postgresql:5432/sausage-store
-    postgresUser: store
-    postgresPassword: storepassword
-    reportPath: /logs/reports
-    logPath: /logs
-  service:
-    port: 8080
-  revisionHistoryLimit: 15
-  replicas: 1
-  strategy:
-  ### Опишите стратегию RollingUpdate для бэкенда
-  image: YOUR_DOCKERHUB/sausage-backend:latest
-  imagePullPolicy: Always
-  resources:
-    requests:
-      memory: "256Mi"
-      cpu: "100m"
-    limits:
-      memory: "512Mi"
-      cpu: "1"
-  containerPort: 8080
-  livenessProbe:
-  ### Опишите LivenessProbe для бэкенда
-  vpa:
-  ### Опишите VPA для бэкенда
-
-backend-report:
-### Опишите значения для backend-report
-### Приложение должно использовать стратегию Recreate
-### Приложение использует переменную PORT - порт, на котором оно запустится и DB - Uri-подключение к mongodb. 
-### DB положите в Secret, PORT в ConfigMap
-### Опишите HPA для backend-report
+      cpu: 200m
+      memory: 128Mi
 
 infra:
   postgresql:
-  ### Опишите необходимые переменные для развертывания PostgresQL в кластере Kubernetes
+    image: postgres:16-alpine
+    database: sausage-store
+    username: store
+    password: storepassword
+    storage: 1Gi
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+
   mongodb:
-    env:
-      MONGO_INITDB_ROOT_USERNAME: root
-      MONGO_INITDB_ROOT_PASSWORD: rootpassword
-    containerPort: 27017
+    image: mongo:7
+    rootUsername: root
+    rootPassword: rootpassword
+    database: sausage-store
+    storage: 1Gi
+    resources:
+      requests:
+        cpu: 150m
+        memory: 200Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
