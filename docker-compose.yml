@@ -1,0 +1,68 @@
+﻿services:
+  postgresql:
+    image: postgres:16-alpine
+    container_name: sausage-postgresql
+    environment:
+      POSTGRES_DB: sausage-store
+      POSTGRES_USER: store
+      POSTGRES_PASSWORD: storepassword
+    volumes:
+      - sausage-postgresql-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U store -d sausage-store"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+  mongodb:
+    image: mongo:7
+    container_name: sausage-mongodb
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: rootpassword
+      MONGO_INITDB_DATABASE: sausage-store
+    volumes:
+      - sausage-mongodb-data:/data/db
+      - ./.docker/mongo-init.js:/docker-entrypoint-initdb.d/mongo-init.js:ro
+    healthcheck:
+      test: ["CMD-SHELL", "mongosh --quiet -u root -p rootpassword --authenticationDatabase admin --eval \"db.adminCommand('ping').ok\""]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+  sausage-backend:
+    image: vladimirgentov/sausage-backend:latest
+    container_name: sausage-backend
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgresql:5432/sausage-store
+      SPRING_DATASOURCE_USERNAME: store
+      SPRING_DATASOURCE_PASSWORD: storepassword
+      SPRING_DATA_MONGODB_URI: mongodb://reports:reportspassword@mongodb:27017/sausage-store
+      SPRING_CLOUD_VAULT_ENABLED: "false"
+      MANAGEMENT_HEALTH_VAULT_ENABLED: "false"
+    ports:
+      - "18080:8080"
+    depends_on:
+      postgresql:
+        condition: service_healthy
+      mongodb:
+        condition: service_healthy
+  sausage-backend-report:
+    image: vladimirgentov/sausage-backend-report:latest
+    container_name: sausage-backend-report
+    environment:
+      PORT: "8080"
+      DB: mongodb://reports:reportspassword@mongodb:27017/sausage-store
+    ports:
+      - "18081:8080"
+    depends_on:
+      mongodb:
+        condition: service_healthy
+  sausage-frontend:
+    image: vladimirgentov/sausage-frontend:latest
+    container_name: sausage-frontend
+    ports:
+      - "18000:80"
+    depends_on:
+      - sausage-backend
+volumes:
+  sausage-postgresql-data:
+  sausage-mongodb-data:
